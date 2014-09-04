@@ -1,0 +1,74 @@
+
+
+
+
+user: root
+
+# mkdir /opt/pgsql-data/master  
+# mkdir /opt/pgsql-data/slave
+
+# chown postgres:postgres /opt/pgsql-data/master
+# chown postgres:postgres /opt/pgsql-data/slave
+
+user:postgres
+
+$ initdb -D /opt/pgsql-data/master
+
+cat /opt/pgsql-data/master/postgresql.conf
+
+    listen_addresses = '*'
+    wal_level = hot_standby
+    synchronous_commit = on
+    max_wal_senders = 2
+    wal_keep_segments = 32
+    synchronous_standby_names = '*'
+
+cat /opt/pgsql-data/master/pg_hba.conf 
+
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            md5 
+host    all             all             0.0.0.0/0               md5 
+host    replication     postgres        0.0.0.0/0               trust
+host    all             all             ::1/128                 trust
+
+$pg_ctl -D /opt/pgsql-data/master start
+
+psql -U postgres -p 5432
+
+SELECT  pg_start_backup('/data/pgsql-data/master');
+
+
+# another shell
+
+cp -r /opt/pgsql-data/master  /opt/pgsql-data/slave
+
+psql -U postgres -p 5432
+
+SELECT  pg_stop_backup();
+
+* change slave configuration file
+
+
+cat /opt/pgsql-data/slave/postgresql.conf
+
+port=5433
+listen_addresses = '*'
+wal_level = minimal
+synchronous_commit =off
+max_wal_senders = 0
+wal_keep_segments = 0
+synchronous_standby_names = ''
+hot_standby = on
+
+ 
+cat /opt/pgsql-data/slave/recovery.conf  |grep ^[^#]
+standby_mode = on
+primary_conninfo = 'host=127.0.0.1 port=5432 user=postgres password=postgres'		# e.g. 'host=localhost port=5432'
+standby_mode = 'on'
+primary_conninfo = 'host=127.0.0.1 port=5432 user=postgres'
+trigger_file = '/opt/pgsql-data/slave/trigger_activestb'
+
+
+* start slave database server
+
+pg_ctl –D /opt/pgsql-data/slave  start
